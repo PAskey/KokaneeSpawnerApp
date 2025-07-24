@@ -17,7 +17,7 @@ max_year <- max(spawn_ests$YEAR, na.rm = TRUE)
 # ---- UI ----
 
 ui <- fluidPage(
-  titlePanel("Okanagan Lake Spawner Abundance Viewer"),
+  titlePanel("Kokanee Spawner Abundance Viewer"),
   
   sidebarLayout(
     sidebarPanel(
@@ -81,7 +81,7 @@ server <- function(input, output, session) {
   # Dynamically update stream list
   observe({
     updateSelectInput(session, "stream_select",
-                      choices = unique(spawn_ests$STREAM),
+                      choices = sort(unique(spawn_ests$STREAM)),
                       selected = NULL)
   })
   
@@ -116,15 +116,23 @@ server <- function(input, output, session) {
     data <- filtered_abundance() %>% filter(STREAM != "TREND")
     
     # Stacked bar for absolute abundance
-    p1 <- ggplot(data, aes(x = YEAR, y = peak_est, fill = STREAM)) +
+    p1 <- ggplot(data, aes(x = YEAR, y = peak_est/1000, fill = STREAM)) +
       geom_bar(stat = "identity", position = "stack", na.rm = TRUE) +
       scale_fill_viridis_d() +
       theme_minimal() +
-      labs(title = "Absolute Spawner Abundance (Stacked by Stream)",
-           x = "Year", y = "Peak Estimate") +
-      theme(panel.grid = element_blank(),
-            axis.line = element_line(),
-            axis.ticks = element_line())
+      labs(title = "Absolute Spawner Abundance",
+           x = "", y = "Kokanee spawners (thousands)") +
+      theme(
+        anel.grid.major.x = element_blank(),  # remove vertical gridlines
+        panel.grid.minor = element_blank(),    # remove minor gridlines
+        axis.line = element_line(),
+        axis.ticks = element_line(),
+        plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 13)
+      )
     
     # Relative abundance line plot
     p2 <- ggplot() +
@@ -136,12 +144,19 @@ server <- function(input, output, session) {
                  shape = 21, fill = "white", size = 2, stroke = 1) +
       scale_color_viridis_d() +
       theme_minimal() +
-      labs(title = "Spawner Abundance (% of Max Peak by Stream)",
+      labs(title = "Relative Spawner Abundance (% of  all year max)",
            subtitle = "Black line = Average across all streams",
-           x = "Year", y = "Relative Peak (%)") +
-      theme(panel.grid = element_blank(),
-            axis.line = element_line(),
-            axis.ticks = element_line())
+           x = "Year", y = "Relative Kokanee Spawners (% of max)") +
+      theme(
+        panel.grid = element_blank(),
+        axis.line = element_line(),
+        axis.ticks = element_line(),
+        plot.title = element_text(size = 18, face = "bold"),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 13)
+      )
     
     ggarrange(p1, p2, ncol = 1)
   })
