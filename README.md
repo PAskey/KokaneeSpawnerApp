@@ -1,5 +1,4 @@
 # KokaneeSpawnerApp
-# Okanagan Lake Spawner Abundance Viewer
 
 This Shiny web application provides interactive visualizations and tables for exploring kokanee salmon spawner data from Okanagan Lake tributaries. It supports stream-specific filtering, historical trend analysis, and side-by-side comparison of estimated peak spawner abundance and raw count data.
 
