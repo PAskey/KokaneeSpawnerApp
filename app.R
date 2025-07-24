@@ -7,8 +7,6 @@ library(DT)
 
 # ---- MAIN DATA ----
 
-setwd("~/FFSBC work docs/Git_projects/KokaneeSpawnerApp")
-
 # Load main data objects
 load("data/spawn_ests.rda")     # loads 'spawn_ests'
 load("data/spawn_counts.rda")   # loads 'spawn_counts'
