@@ -27,13 +27,19 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      radioButtons("stream_mode", "Stream Selection Mode:",
-                   choices = c("All Sites" = "all", "Select Streams or Sites" = "select"),
+      # New ECOTYPE selector
+      radioButtons("ecotype_select", "Ecotype:",
+                   choices = c("All Ecotypes" = "all", "Stream" = "STREAM", "Shore" = "SHORE"),
+                   selected = "all"),
+      
+      # Updated stream/site selection label
+      radioButtons("stream_mode", "Site Selection Mode:",
+                   choices = c("All Sites" = "all", "Select Sites" = "select"),
                    selected = "all"),
       
       conditionalPanel(
         condition = "input.stream_mode == 'select'",
-        selectInput("stream_select", "Select Stream(s):",
+        selectInput("stream_select", "Select Site(s):",
                     choices = NULL, multiple = TRUE)
       ),
       
@@ -68,53 +74,66 @@ ui <- fluidPage(
                    )
                  )
         )
-        
-        
       )
     )
   )
 )
 
+
 # ---- SERVER ----
 
 server <- function(input, output, session) {
   
-  # Provide Excel template download
   output$download_template <- downloadHandler(
-    filename = function() {
-      "spawner_count_template.xlsx"
-    },
+    filename = function() { "spawner_count_template.xlsx" },
     content = function(file) {
       file.copy("data/spawner_count_template.xlsx", file)
     }
   )
   
-  # Dynamically update stream list
   observe({
+    filtered_choices <- spawn_ests
+    if (input$ecotype_select != "all") {
+      filtered_choices <- filtered_choices %>% filter(ECOTYPE == input$ecotype_select)
+    }
     updateSelectInput(session, "stream_select",
-                      choices = sort(unique(spawn_ests$SITE)),
+                      choices = sort(unique(filtered_choices$SITE)),
                       selected = NULL)
   })
   
-  # Determine selected streams
   selected_streams <- reactive({
+    all_sites <- spawn_ests
+    if (input$ecotype_select != "all") {
+      all_sites <- all_sites %>% filter(ECOTYPE == input$ecotype_select)
+    }
     if (input$stream_mode == "all") {
-      unique(spawn_ests$SITE)
+      unique(all_sites$SITE)
     } else {
       req(input$stream_select)
       input$stream_select
     }
   })
   
-  # Filtered abundance data
   filtered_abundance <- reactive({
-    spawn_ests %>%
-      filter(SITE %in% c(selected_streams(), "TREND"),
-             YEAR >= input$year_range[1],
+    data <- spawn_ests %>%
+      filter(YEAR >= input$year_range[1],
              YEAR <= input$year_range[2])
+    
+    if (input$ecotype_select != "all") {
+      data <- data %>%
+        filter(
+          (SITE != "TREND" & ECOTYPE == input$ecotype_select) |
+            (SITE == "TREND" & ECOTYPE == input$ecotype_select)
+        )
+    } else {
+      data <- data %>%
+        filter(SITE %in% c(selected_streams(), "TREND"))
+    }
+    
+    data %>% filter(SITE %in% c(selected_streams(), "TREND"))
   })
   
-  # Filtered raw count data
+  
   filtered_raw <- reactive({
     spawn_counts %>%
       filter(SITE %in% selected_streams(),
@@ -194,7 +213,7 @@ server <- function(input, output, session) {
       scale_color_manual(values = custom_colors, name = "Spawner Site") +
       theme_minimal() +
       labs(title = "Relative Spawner Abundance (% of all year max)",
-           subtitle = "Black line = Average across all streams",
+           subtitle = "Black lines = Average trends all sites",
            x = "Year", y = "Relative Kokanee Spawners (% of max)") +
       theme(
         panel.grid = element_blank(),
