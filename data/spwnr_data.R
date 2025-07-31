@@ -20,7 +20,7 @@ Beta_GAUC = 0.1768914
 # Calculate peak estimates and peak_percent per stream
 spawn_ests <- spawn_counts %>%
   dplyr::group_by(ECOTYPE, LAKE, YEAR, QUADRANT, STREAM, DOY) %>%
-  dplyr::summarize(COUNT = sum(NO_LIVE))
+  dplyr::summarize(COUNT = sum(NO_LIVE, na.rm = TRUE))
  
     
     
@@ -28,7 +28,7 @@ spawn_ests <- spawn_ests %>%
   dplyr::group_by(ECOTYPE) %>%
   dplyr::group_by(LAKE, YEAR, QUADRANT, STREAM, .add = TRUE) %>%
   dplyr::summarize(
-    peak_count = max(COUNT),
+    peak_count = max(COUNT, na.rm = TRUE),
     peak_est = if (ECOTYPE[1] == "STREAM") {
       round( peak_count* Beta_peak)
     } else {

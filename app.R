@@ -150,9 +150,14 @@ server <- function(input, output, session) {
     stream_data <- data %>% filter(ECOTYPE == "STREAM")
     shore_data  <- data %>% filter(ECOTYPE == "SHORE")
     
+    
     # Get unique SITE values
-    stream_sites <- unique(stream_data$SITE)
-    shore_sites  <- unique(shore_data$SITE)
+    stream_sites <- stream_data%>%dplyr::select(SITE, peak_est)%>%
+      arrange(desc(peak_est))%>%
+      pull(SITE)%>%unique()
+    shore_sites  <- shore_data%>%dplyr::select(SITE, peak_est)%>%
+      arrange(desc(peak_est))%>%
+      pull(SITE)%>%unique()
     
     # Desired order: all shore sites first (or last)
     ordered_sites <- c(shore_sites, stream_sites)  # <- SHORE on top
@@ -164,7 +169,7 @@ server <- function(input, output, session) {
     shore_data$SITE  <- factor(shore_data$SITE,  levels = ordered_sites)
     
     # Generate separate viridis color palettes
-    stream_colors <- setNames(viridis(length(stream_sites), option = "D"), stream_sites)
+    stream_colors <- setNames(viridis(length(stream_sites), option = "D", direction = -1), stream_sites)
     shore_colors  <- setNames(viridis(length(shore_sites), option = "A"), shore_sites)
     custom_colors <- c(shore_colors, stream_colors)
     
