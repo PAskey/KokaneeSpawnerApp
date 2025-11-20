@@ -5,7 +5,7 @@ account: gofishbc
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15119493
-bundleId: 10708832
+bundleId: 11209077
 url: https://gofishbc.shinyapps.io/KokaneeSpawnerApp/
 version: 1
 asMultiple: FALSE
