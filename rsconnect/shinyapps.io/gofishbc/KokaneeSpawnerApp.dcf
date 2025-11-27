@@ -5,9 +5,9 @@ account: gofishbc
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15119493
-bundleId: 11209077
+bundleId: 11242783
 url: https://gofishbc.shinyapps.io/KokaneeSpawnerApp/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: www/Spatial_data_contacts.png
+ignoredFiles: data-raw/Raw spawner_count_2025_11_20.xlsx|data-raw/Whiteman Equesis Nashwito OKIB spawner counts 2025.xlsx|www/Spatial_data_contacts.png
