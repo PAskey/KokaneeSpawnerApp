@@ -51,7 +51,14 @@ ui <- fluidPage(
       downloadButton("download_csv_raw", "Download selected raw count data"),
       br(), br(),
       h5("Need an input template?"),
-      downloadLink("download_template", "Download Spawner Counts Template")
+      downloadLink("download_template", "Download Spawner Counts Template"),
+      br(), br(),
+      h5("Methods used to estimate spawner abundance"),
+      tags$a(
+        "Download methods (PDF)",
+        href   = "Askey et al 2023-spawner-estimation-methods.pdf",
+        target = "_blank"
+      )
     ),
     
     mainPanel(

@@ -6,7 +6,7 @@ library(spwnr)
 library(readxl)
 library(dplyr)
 
-spawn_counts = read_excel("REBUILD OKANAGAN KOKANEE STREAMSPAWNERS.xlsx", sheet = "Kokanee")
+spawn_counts = read_excel("OKANAGAN KOKANEE SPAWNERS CANONICAL.xlsx", sheet = "Kokanee")
 save(spawn_counts, file = "spawn_counts.rda")
 
 #IMPORTANT: Mission Creek spawning channel is included in MIssion data but known as reach E.
