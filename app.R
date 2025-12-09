@@ -27,12 +27,21 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      # New ECOTYPE selector
+      
+      # LAKE selector
+      radioButtons(
+        "lake_select", "Lake:",
+        choices = c("All Lakes" = "all",
+                    sort(unique(spawn_ests$LAKE))),
+        selected = "all"
+      ),
+      
+      # ECOTYPE selector
       radioButtons("ecotype_select", "Ecotype:",
                    choices = c("All Ecotypes" = "all", "Stream" = "STREAM", "Shore" = "SHORE"),
                    selected = "all"),
       
-      # Updated stream/site selection label
+      # stream/site selection label
       radioButtons("stream_mode", "Site Selection Mode:",
                    choices = c("All Sites" = "all", "Select Sites" = "select"),
                    selected = "all"),
@@ -100,6 +109,13 @@ server <- function(input, output, session) {
   
   observe({
     filtered_choices <- spawn_ests
+    
+    # Filter by lake
+    if (input$lake_select != "all") {
+      filtered_choices <- filtered_choices %>%
+        filter(LAKE == input$lake_select)
+    }
+    #filter by ecotype
     if (input$ecotype_select != "all") {
       filtered_choices <- filtered_choices %>% filter(ECOTYPE == input$ecotype_select)
     }
@@ -110,6 +126,12 @@ server <- function(input, output, session) {
   
   selected_streams <- reactive({
     all_sites <- spawn_ests
+    
+    # Filter by lake first
+    if (input$lake_select != "all") {
+      all_sites <- all_sites %>% filter(LAKE == input$lake_select)
+    }
+    
     if (input$ecotype_select != "all") {
       all_sites <- all_sites %>% filter(ECOTYPE == input$ecotype_select)
     }
@@ -125,6 +147,11 @@ server <- function(input, output, session) {
     data <- spawn_ests %>%
       filter(YEAR >= input$year_range[1],
              YEAR <= input$year_range[2])
+    
+    # Filter by lake
+    if (input$lake_select != "all") {
+      data <- data %>% filter(LAKE == input$lake_select)
+    }
     
     if (input$ecotype_select != "all") {
       data <- data %>%
