@@ -73,7 +73,23 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel("Plots",
-                 plotOutput("plot_absolute", height = "800px")
+                 br(),
+                 radioButtons("plot_type", NULL,
+                              choices = c("Site-specific plots" = "site",
+                                          "Lake trend plots" = "trend"),
+                              selected = "trend", inline = TRUE),
+                 conditionalPanel(
+                   condition = "input.plot_type == 'site'",
+                   plotOutput("plot_absolute", height = "800px")
+                 ),
+                 conditionalPanel(
+                   condition = "input.plot_type == 'trend'",
+                   helpText("Lake totals by ecotype: Stream = sum of all stream estimates (peak count x expansion);",
+                            "Shore = sum of quadrant peak counts. Lake, Ecotype and Year filters apply; site selection is ignored.",
+                            "Open points = fewer sites surveyed than usual for that lake/ecotype, so the total may be low. Gaps in a line = year not surveyed."),
+                   plotOutput("plot_trend", height = "auto"),
+                   downloadButton("download_csv_trend", "Download lake trend data")
+                 )
         ),
         tabPanel("Data",
                  fluidRow(
@@ -175,6 +191,79 @@ server <- function(input, output, session) {
              YEAR <= input$year_range[2])
   })
   
+  # ---- Lake trend data (sum of site estimates by lake x ecotype x year) ----
+  lake_trend <- reactive({
+    data <- spawn_ests %>%
+      filter(SITE != "TREND",
+             YEAR >= input$year_range[1],
+             YEAR <= input$year_range[2])
+    if (input$lake_select != "all") data <- data %>% filter(LAKE == input$lake_select)
+    if (input$ecotype_select != "all") data <- data %>% filter(ECOTYPE == input$ecotype_select)
+    
+    data %>%
+      group_by(LAKE, ECOTYPE, YEAR) %>%
+      summarize(total_est = sum(peak_est, na.rm = TRUE),
+                n_sites   = n_distinct(SITE),
+                .groups = "drop") %>%
+      group_by(LAKE, ECOTYPE) %>%
+      mutate(typical_sites = median(n_sites),
+             partial = n_sites < typical_sites) %>%
+      ungroup()
+  })
+  
+  # Same data with unsurveyed years added as NA so trend lines break at gaps
+  lake_trend_plot <- reactive({
+    d <- lake_trend()
+    all_years <- d %>%
+      group_by(LAKE, ECOTYPE) %>%
+      reframe(YEAR = seq(min(YEAR), max(YEAR)))
+    all_years %>%
+      left_join(d, by = c("LAKE", "ECOTYPE", "YEAR")) %>%
+      arrange(LAKE, ECOTYPE, YEAR)
+  })
+  
+  output$plot_trend <- renderPlot({
+    d <- lake_trend_plot()
+    req(nrow(d) > 0)
+    
+    ggplot(d, aes(x = YEAR, y = total_est / 1000, colour = ECOTYPE, group = ECOTYPE)) +
+      geom_line(linewidth = 1.2) +   # NA years (no survey) break the line
+      geom_point(aes(shape = partial), size = 3, stroke = 1.2, fill = "white", na.rm = TRUE) +
+      scale_shape_manual(values = c(`FALSE` = 19, `TRUE` = 21),
+                         labels = c(`FALSE` = "Typical survey", `TRUE` = "Fewer sites surveyed"),
+                         name = NULL) +
+      scale_colour_manual(values = c(STREAM = "#2A788E", SHORE = "#4D4D4D"),
+                          labels = c(STREAM = "Stream (sum of streams)", SHORE = "Shore (sum of quadrants)"),
+                          name = "Ecotype") +
+      # scales = "free" so every panel keeps its own x axis; fixed limits keep years aligned
+      facet_wrap(~ LAKE, ncol = 1, scales = "free") +
+      scale_x_continuous(limits = range(d$YEAR)) +
+      scale_y_continuous(
+        limits = c(0, NA),
+        # never more than 100k (100 in thousands) between y-axis ticks
+        breaks = function(lims) {
+          b <- pretty(lims)
+          if (length(b) > 1 && diff(b)[1] > 100) b <- seq(0, ceiling(lims[2] / 100) * 100, by = 100)
+          b
+        }
+      ) +
+      theme_minimal() +
+      labs(x = "", y = "Kokanee spawners (thousands)") +
+      theme(
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(),
+        axis.ticks = element_line(),
+        strip.text = element_text(size = 16, face = "bold", hjust = 0),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 13),
+        legend.position = "top",
+        legend.box = "vertical",
+        legend.justification = "left"
+      )
+  }, height = function() 120 + 300 * max(1, length(unique(lake_trend()$LAKE))))
+  
   # ---- Plots ----
   output$plot_absolute <- renderPlot({
     full_data <- filtered_abundance()
@@ -236,7 +325,7 @@ server <- function(input, output, session) {
       # Stream lines and points
       geom_line(data = stream_data,
                 aes(x = YEAR, y = peak_percent, group = SITE, color = SITE),
-                size = 1, na.rm = TRUE) +
+                linewidth = 1, na.rm = TRUE) +
       geom_point(data = stream_data,
                  aes(x = YEAR, y = peak_percent, color = SITE),
                  shape = 21, fill = "white", size = 2, stroke = 1, na.rm = TRUE) +
@@ -244,7 +333,7 @@ server <- function(input, output, session) {
       # Shore lines and points
       geom_line(data = shore_data,
                 aes(x = YEAR, y = peak_percent, group = SITE, color = SITE),
-                size = 1, na.rm = TRUE) +
+                linewidth = 1, na.rm = TRUE) +
       geom_point(data = shore_data,
                  aes(x = YEAR, y = peak_percent, color = SITE),
                  shape = 22, fill = "white", size = 2.5, stroke = 0.7, na.rm = TRUE) +
@@ -319,6 +408,15 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       write.csv(filtered_abundance(), file, row.names = FALSE)
+    }
+  )
+  
+  output$download_csv_trend <- downloadHandler(
+    filename = function() {
+      paste0("Lake_Trend_Spawner_Abundance_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write.csv(lake_trend(), file, row.names = FALSE)
     }
   )
   

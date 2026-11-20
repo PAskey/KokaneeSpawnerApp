@@ -1,5 +1,6 @@
 #Okanagan Kokanee Database
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+devtools::install_github("PAskey/spwnr")
 
 
 library(spwnr)
@@ -7,6 +8,8 @@ library(readxl)
 library(dplyr)
 
 spawn_counts = read_excel("OKANAGAN KOKANEE SPAWNERS CANONICAL.xlsx", sheet = "Kokanee")
+# DATE is an Excel formula; files saved by scripts (not Excel) carry no cached value, so rebuild it here
+spawn_counts$DATE = as.Date(ISOdate(spawn_counts$YEAR, spawn_counts$MONTH, spawn_counts$DAY))
 save(spawn_counts, file = "spawn_counts.rda")
 
 #IMPORTANT: Mission Creek spawning channel is included in MIssion data but known as reach E.
