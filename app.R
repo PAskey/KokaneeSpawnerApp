@@ -17,12 +17,45 @@ spawn_counts = spawn_counts%>%
   dplyr::mutate(SITE = if_else(is.na(STREAM),QUADRANT,STREAM))%>%
   ungroup() 
 
+load("data/site_shares.rda")   # loads 'site_shares' (built in data/spwnr_data.R)
+
+# A lake/ecotype/year is flagged "major site(s) missed" when the sites not surveyed that
+# year together average more than this share of the lake/ecotype total (mean_annual_share).
+# Small streams that are only visited some years fall below it and are not flagged.
+partial_share_threshold <- 0.03
+
+# Each site's survey span: a site only counts as missed in years between its first and
+# last survey (e.g. Mission Channel is not "missing" before it was built in 1988).
+# Sites not in site_shares (none surveyed in its reference period) get share 0.
+site_span <- spawn_ests %>%
+  dplyr::filter(SITE != "TREND") %>%
+  dplyr::group_by(LAKE, ECOTYPE, SITE) %>%
+  dplyr::summarize(first_year = min(YEAR), last_year = max(YEAR), .groups = "drop") %>%
+  dplyr::left_join(site_shares %>% dplyr::select(LAKE, ECOTYPE, SITE, mean_annual_share),
+                   by = c("LAKE", "ECOTYPE", "SITE")) %>%
+  dplyr::mutate(mean_annual_share = dplyr::coalesce(mean_annual_share, 0))
+
 min_year <- min(spawn_ests$YEAR, na.rm = TRUE)
 max_year <- max(spawn_ests$YEAR, na.rm = TRUE)
 
 # ---- UI ----
 
 ui <- fluidPage(
+  # Copy a rendered plot image to the clipboard (works in Chrome, Edge, Safari, recent Firefox)
+  tags$head(tags$script(HTML("
+    function copyPlot(outputId, btn) {
+      var img = document.querySelector('#' + outputId + ' img');
+      var label = btn.innerHTML;
+      var done = function(msg) { btn.innerHTML = msg; setTimeout(function() { btn.innerHTML = label; }, 2000); };
+      if (!img || !navigator.clipboard || typeof ClipboardItem === 'undefined') {
+        done('Copy not supported - use Download PNG'); return;
+      }
+      fetch(img.src).then(function(r) { return r.blob(); })
+        .then(function(b) { return navigator.clipboard.write([new ClipboardItem({'image/png': b})]); })
+        .then(function() { done('Copied!'); })
+        .catch(function() { done('Copy failed - use Download PNG'); });
+    }
+  "))),
   titlePanel("Kokanee Spawner Abundance Viewer"),
   
   sidebarLayout(
@@ -80,13 +113,21 @@ ui <- fluidPage(
                               selected = "trend", inline = TRUE),
                  conditionalPanel(
                    condition = "input.plot_type == 'site'",
+                   div(style = "margin-bottom: 8px;",
+                       tags$button(class = "btn btn-default", onclick = "copyPlot('plot_absolute', this)",
+                                   icon("copy"), "Copy plot"),
+                       downloadButton("download_png_site", "Download PNG")),
                    plotOutput("plot_absolute", height = "800px")
                  ),
                  conditionalPanel(
                    condition = "input.plot_type == 'trend'",
                    helpText("Lake totals by ecotype: Stream = sum of all stream estimates (peak count x expansion);",
                             "Shore = sum of quadrant peak counts. Lake, Ecotype and Year filters apply; site selection is ignored.",
-                            "Open points = fewer sites surveyed than usual for that lake/ecotype, so the total may be low. Gaps in a line = year not surveyed."),
+                            "Open points = sites that together average more than 3% of the lake/ecotype total were not surveyed that year, so the total may be low. Gaps in a line = year not surveyed."),
+                   div(style = "margin-bottom: 8px;",
+                       tags$button(class = "btn btn-default", onclick = "copyPlot('plot_trend', this)",
+                                   icon("copy"), "Copy plot"),
+                       downloadButton("download_png_trend", "Download PNG")),
                    plotOutput("plot_trend", height = "auto"),
                    downloadButton("download_csv_trend", "Download lake trend data")
                  )
@@ -200,15 +241,28 @@ server <- function(input, output, session) {
     if (input$lake_select != "all") data <- data %>% filter(LAKE == input$lake_select)
     if (input$ecotype_select != "all") data <- data %>% filter(ECOTYPE == input$ecotype_select)
     
-    data %>%
+    totals <- data %>%
       group_by(LAKE, ECOTYPE, YEAR) %>%
       summarize(total_est = sum(peak_est, na.rm = TRUE),
                 n_sites   = n_distinct(SITE),
-                .groups = "drop") %>%
-      group_by(LAKE, ECOTYPE) %>%
-      mutate(typical_sites = median(n_sites),
-             partial = n_sites < typical_sites) %>%
-      ungroup()
+                .groups = "drop")
+    
+    # Sites within their survey span that were not surveyed in a given year
+    missed <- totals %>%
+      select(LAKE, ECOTYPE, YEAR) %>%
+      inner_join(site_span, by = c("LAKE", "ECOTYPE"), relationship = "many-to-many") %>%
+      filter(YEAR >= first_year, YEAR <= last_year) %>%
+      anti_join(data %>% distinct(LAKE, ECOTYPE, YEAR, SITE),
+                by = c("LAKE", "ECOTYPE", "YEAR", "SITE")) %>%
+      group_by(LAKE, ECOTYPE, YEAR) %>%
+      summarize(missed_share = sum(mean_annual_share),
+                missed_sites = paste(SITE[mean_annual_share > 0], collapse = ", "),
+                .groups = "drop")
+    
+    totals %>%
+      left_join(missed, by = c("LAKE", "ECOTYPE", "YEAR")) %>%
+      mutate(missed_share = coalesce(missed_share, 0),
+             partial = missed_share > partial_share_threshold)
   })
   
   # Same data with unsurveyed years added as NA so trend lines break at gaps
@@ -222,7 +276,9 @@ server <- function(input, output, session) {
       arrange(LAKE, ECOTYPE, YEAR)
   })
   
-  output$plot_trend <- renderPlot({
+  trend_n_lakes <- reactive(max(1, length(unique(lake_trend()$LAKE))))
+  
+  trend_plot <- reactive({
     d <- lake_trend_plot()
     req(nrow(d) > 0)
     
@@ -230,8 +286,8 @@ server <- function(input, output, session) {
       geom_line(linewidth = 1.2) +   # NA years (no survey) break the line
       geom_point(aes(shape = partial), size = 3, stroke = 1.2, fill = "white", na.rm = TRUE) +
       scale_shape_manual(values = c(`FALSE` = 19, `TRUE` = 21),
-                         labels = c(`FALSE` = "Typical survey", `TRUE` = "Fewer sites surveyed"),
-                         name = NULL) +
+                         labels = c(`FALSE` = "Typical survey", `TRUE` = "Site(s) missed"),
+                         name = NULL, na.translate = FALSE) +
       scale_colour_manual(values = c(STREAM = "#2A788E", SHORE = "#4D4D4D"),
                           labels = c(STREAM = "Stream (sum of streams)", SHORE = "Shore (sum of quadrants)"),
                           name = "Ecotype") +
@@ -262,10 +318,20 @@ server <- function(input, output, session) {
         legend.box = "vertical",
         legend.justification = "left"
       )
-  }, height = function() 120 + 300 * max(1, length(unique(lake_trend()$LAKE))))
+  })
+  
+  output$plot_trend <- renderPlot(trend_plot(), height = function() 120 + 300 * trend_n_lakes())
+  
+  output$download_png_trend <- downloadHandler(
+    filename = function() paste0("Kokanee_lake_trends_", Sys.Date(), ".png"),
+    content = function(file) {
+      ggsave(file, trend_plot(), width = 10, height = 1.2 + 3 * trend_n_lakes(),
+             dpi = 300, bg = "white", limitsize = FALSE)
+    }
+  )
   
   # ---- Plots ----
-  output$plot_absolute <- renderPlot({
+  site_plot <- reactive({
     full_data <- filtered_abundance()
     data <- full_data %>% filter(SITE != "TREND")
     
@@ -374,12 +440,16 @@ server <- function(input, output, session) {
       legend = "right",
       align = "v"
     )
-    
-    
-    
-    
-    
   })
+  
+  output$plot_absolute <- renderPlot(site_plot())
+  
+  output$download_png_site <- downloadHandler(
+    filename = function() paste0("Kokanee_site_plots_", Sys.Date(), ".png"),
+    content = function(file) {
+      ggsave(file, site_plot(), width = 12, height = 10, dpi = 300, bg = "white")
+    }
+  )
   
   
   # ---- Data Tables ----
